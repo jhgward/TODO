@@ -46,6 +46,14 @@
 | 001-9 | 과거 종료예정일 | `{ title: "ok", dueDate: "2020-01-01" }` | 400, "종료예정일은 오늘 이후 날짜를 선택해주세요" |
 | 001-10 | position 자동 할당 | 연속 2개 생성 | 나중 생성 티켓의 position이 더 작음 (맨 위 배치) |
 | 001-11 | startedAt/completedAt 초기값 | 정상 생성 | startedAt=null, completedAt=null |
+| 001-12 | 오늘 종료예정일 | `{ title: "ok", dueDate: 오늘(Asia/Seoul) }` | 400, "종료예정일은 오늘 이후 날짜를 선택해주세요" |
+| 001-13 | 내일 종료예정일 | `{ title: "ok", dueDate: 내일(Asia/Seoul) }` | 201 |
+| 001-14 | JSON이 아닌 본문 | 본문 `not json`, 본문 `[]` | 400, "요청 형식이 올바르지 않습니다" |
+| 001-15 | 문자열이 아닌 제목 | `{ title: 123 }` | 400, "요청 형식이 올바르지 않습니다" |
+| 001-16 | 날짜 형식 오류 | `{ title: "ok", dueDate: "2026/10/01" }`, `{ title: "ok", plannedStartDate: "2026-02-30" }` | 400, "요청 형식이 올바르지 않습니다" |
+| 001-17 | 경계값 | `{ title: "a".repeat(200) }`, `{ title: "ok", description: "a".repeat(1000) }` | 201 |
+| 001-18 | 시스템 필드 입력 무시 | `{ title: "ok", status: "DONE", position: 999, startedAt: "..." }` | 201, status=BACKLOG, startedAt=null, position≠999 |
+| 001-19 | 빈 Backlog 첫 position (서비스 단위) | Backlog 최솟값 없음 / 0 / -1024 | 0 / -1024 / -2048 |
 
 ---
 
@@ -72,6 +80,7 @@
 | 003-2 | 없는 티켓 | 존재하지 않는 id | 404, "티켓을 찾을 수 없습니다" |
 | 003-3 | 잘못된 id 형식 | `"abc"` | 400, VALIDATION_ERROR |
 | 003-4 | isOverdue 포함 | 정상 조회 | isOverdue 파생 필드 포함 |
+| 003-5 | 양의 정수가 아닌 id | `"0"`, `"-1"`, `"1.5"` | 400, "요청 형식이 올바르지 않습니다" |
 
 ---
 
@@ -87,7 +96,12 @@
 | 004-6 | 시작예정일 삭제 | `{ plannedStartDate: null }` | 200, plannedStartDate=null |
 | 004-7 | 없는 티켓 수정 | 존재하지 않는 id | 404, "티켓을 찾을 수 없습니다" |
 | 004-8 | updatedAt 갱신 | 아무 필드 수정 | updatedAt 변경 확인 |
-| 004-9 | status 수정 불가 | `{ status: "DONE" }` | status 변경되지 않음 (무시 또는 400) |
+| 004-9 | status 수정 불가 | `{ status: "DONE", title: "x" }` | 200, status 변경되지 않음 (무시) |
+| 004-10 | 빈 제목으로 수정 | `{ title: "  " }` | 400, "제목을 입력해주세요" |
+| 004-11 | 생성과 같은 검증 | 오늘 종료예정일 / 201자 제목 / 1001자 설명 / `priority: "URGENT"` | 400, 각 항목의 메시지 |
+| 004-12 | 빈 본문 | `{ }` | 200, 변경 없음 (updatedAt 유지) |
+| 004-13 | isOverdue 포함 | 정상 수정 | 응답에 isOverdue 포함 |
+| 004-14 | 형식 오류 | `{ title: null }`, JSON이 아닌 본문 | 400, "요청 형식이 올바르지 않습니다" |
 
 ---
 
@@ -100,6 +114,9 @@
 | 005-3 | position 할당 | 정상 완료 | Done 칼럼 맨 위 position 할당 |
 | 005-4 | 없는 티켓 완료 | 존재하지 않는 id | 404, "티켓을 찾을 수 없습니다" |
 | 005-5 | updatedAt 갱신 | 정상 완료 | updatedAt 변경 확인 |
+| 005-6 | 이미 DONE인 티켓 재완료 | DONE 티켓의 id | 200, completedAt·position·updatedAt 유지 |
+| 005-7 | 빈 Done 칼럼 position (서비스 단위) | Done 최솟값 없음 | position = 0 |
+| 005-8 | 잘못된 id 형식 | `"abc"` | 400, "요청 형식이 올바르지 않습니다" |
 
 ---
 
@@ -109,6 +126,7 @@
 |----|----------|------|-----------|
 | 006-1 | 정상 삭제 | 유효한 id | 204, 재조회 시 404 |
 | 006-2 | 없는 티켓 삭제 | 존재하지 않는 id | 404, "티켓을 찾을 수 없습니다" |
+| 006-3 | 잘못된 id 형식 | `"abc"` | 400, "요청 형식이 올바르지 않습니다" |
 
 ---
 
@@ -128,6 +146,15 @@
 | 007-10 | 잘못된 status | `{ status: "INVALID" }` | 400, "상태는 BACKLOG, TODO, IN_PROGRESS 중 선택해주세요" |
 | 007-11 | 없는 티켓 이동 | 존재하지 않는 ticketId | 404, "티켓을 찾을 수 없습니다" |
 | 007-12 | updatedAt 갱신 | 정상 이동 | updatedAt 변경 확인 |
+| 007-13 | 빈 칼럼으로 이동 (서비스 단위) | 대상 칼럼에 다른 티켓 없음 | position = 0, affected = [] |
+| 007-14 | 인덱스가 칼럼 길이 이상 | `{ position: 999999 }` | 해당 칼럼 맨 뒤 (마지막 + 1024) |
+| 007-15 | IN_PROGRESS에서 BACKLOG로 | IN_PROGRESS → BACKLOG | startedAt = null |
+| 007-16 | 같은 칼럼 내 이동 시 startedAt 유지 (서비스 단위) | TODO → TODO | startedAt 변경 없음 |
+| 007-17 | 형식 오류 | position `-1`·`1.5`·누락, ticketId 문자열 | 400, "요청 형식이 올바르지 않습니다" |
+| 007-18 | 재정렬 없는 이동의 응답 형식 | 정상 이동 | `{ ticket, affected: [] }`, ticket에 isOverdue 없음 |
+| 007-19 | 정수 범위를 넘는 ticketId | `{ ticketId: 99999999999 }` | 400, "요청 형식이 올바르지 않습니다" (경로 id와 동일하게 처리, 500 아님) |
+
+> `position`은 대상 칼럼 내 인덱스(0부터)이며, 007-8의 재정렬은 인접 카드 사이에 넣을 정수가 없을 때(간격 1 이하) 발생한다 (서비스 단위 테스트로 검증).
 
 ---
 

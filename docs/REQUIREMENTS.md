@@ -20,7 +20,7 @@
 | description | string | X | 최대 1000자 | null |
 | priority | enum | X | LOW, MEDIUM, HIGH | MEDIUM |
 | plannedStartDate | date | X | - | null |
-| dueDate | date | X | 오늘 이후 날짜 | null |
+| dueDate | date | X | 내일 이후 날짜 (오늘 불가, Asia/Seoul 기준) | null |
 
 **처리 규칙**:
 - 생성 시 status는 항상 BACKLOG
@@ -36,7 +36,8 @@
 | 제목 공백만 입력 | "제목을 입력해주세요" |
 | 설명 1000자 초과 | "설명은 1000자 이내로 입력해주세요" |
 | 잘못된 우선순위 값 | "우선순위는 LOW, MEDIUM, HIGH 중 선택해주세요" |
-| 과거 종료예정일 | "종료예정일은 오늘 이후 날짜를 선택해주세요" |
+| 과거 또는 오늘 종료예정일 | "종료예정일은 오늘 이후 날짜를 선택해주세요" |
+| 본문 해석 불가·자료형 불일치·날짜 형식 오류 | "요청 형식이 올바르지 않습니다" |
 
 **성공 응답**: 201 Created + 생성된 티켓 전체 데이터
 **실패 응답**: 400 Bad Request + 검증 에러 상세
@@ -78,23 +79,27 @@
 **수정 가능 필드**:
 | 필드 | 타입 | 제약조건 |
 |------|------|----------|
-| title | string | 1~200자 |
+| title | string | 1~200자, 공백만 불가 |
 | description | string \| null | 최대 1000자. null 전송 시 삭제 |
 | priority | enum | LOW, MEDIUM, HIGH |
 | plannedStartDate | date \| null | null 전송 시 삭제 |
-| dueDate | date \| null | 오늘 이후. null 전송 시 삭제 |
+| dueDate | date \| null | 내일 이후 (오늘 불가, Asia/Seoul 기준). null 전송 시 삭제 |
 
 **처리 규칙**:
 - 부분 수정(PATCH) 지원: 전송된 필드만 업데이트
 - updatedAt 자동 갱신
+- status, position, startedAt, completedAt은 전송해도 무시
+- 바꿀 필드가 없으면 변경 없이 현재 티켓 반환
 
 **검증 에러 메시지**:
 | 조건 | 메시지 |
 |------|--------|
+| 제목 빈 값·공백만 | "제목을 입력해주세요" |
 | 제목 200자 초과 | "제목은 200자 이내로 입력해주세요" |
 | 설명 1000자 초과 | "설명은 1000자 이내로 입력해주세요" |
 | 잘못된 우선순위 값 | "우선순위는 LOW, MEDIUM, HIGH 중 선택해주세요" |
-| 과거 종료예정일 | "종료예정일은 오늘 이후 날짜를 선택해주세요" |
+| 과거 또는 오늘 종료예정일 | "종료예정일은 오늘 이후 날짜를 선택해주세요" |
+| id가 양의 정수가 아님·본문 해석 불가·자료형 불일치·날짜 형식 오류 | "요청 형식이 올바르지 않습니다" |
 
 **성공 응답**: 200 OK + 수정된 티켓 전체 데이터
 **실패 응답**: 400 (검증 실패), 404 (미존재)
@@ -108,7 +113,8 @@
 **API 매핑**: `PATCH /api/tickets/:id/complete`
 
 **처리 규칙**:
-- DONE으로 이동 시: completedAt = 현재 시각, status = DONE
+- DONE으로 이동 시: completedAt = 현재 시각, status = DONE, Done 칼럼 맨 위 배치 (Done이 비어 있으면 position = 0)
+- 이미 DONE인 티켓을 다시 완료 처리하면 아무것도 변경하지 않고 현재 티켓 반환
 - DONE에서 다른 칼럼으로 이동 시: completedAt = null
 - Done 칼럼에는 completedAt 기준 24시간 이내 티켓만 표시
 
@@ -141,28 +147,33 @@
 |------|------|------|
 | ticketId | number | 이동할 티켓 ID |
 | status | enum | 이동 대상 칼럼 (BACKLOG, TODO, IN_PROGRESS) |
-| position | number | 칼럼 내 새 위치 |
+| position | number | 대상 칼럼 내 인덱스 (0부터, 이동 티켓 제외 기준). 칼럼 길이 이상이면 맨 뒤 |
 
 > DONE은 허용하지 않는다. Done으로의 이동은 `PATCH /api/tickets/:id/complete` (FR-005)를 사용한다.
 
 **처리 규칙**:
 - 상태(status)와 순서(position) 동시 업데이트
 - 트랜잭션으로 원자성 보장
+- 실제 position 값은 요청한 인덱스를 바탕으로 서버가 계산
 
 **position 재계산 로직**:
-- 두 카드 사이에 삽입할 때: `(prev + next) / 2`로 계산
-- 간격이 1 미만이면: 해당 칼럼 전체를 1024 간격으로 재정렬
+- 빈 칼럼에 삽입: 0
+- 두 카드 사이에 삽입할 때: `(prev + next) / 2`를 내림한 정수
+- 두 카드 사이에 넣을 정수가 없으면(간격 1 이하): 해당 칼럼 전체를 0부터 1024 간격으로 재정렬
 - 맨 앞 삽입: 첫 번째 카드의 position - 1024
 - 맨 뒤 삽입: 마지막 카드의 position + 1024
 
 **비즈니스 로직**:
-- TODO로 이동 시: startedAt = 현재 시각
-- TODO에서 BACKLOG로 이동 시: startedAt = null
+- 다른 칼럼에서 TODO로 이동 시: startedAt = 현재 시각
+- 다른 칼럼에서 BACKLOG로 이동 시: startedAt = null
+- 같은 칼럼 내 순서 변경: startedAt 변경 없음
+- DONE에서 다른 칼럼으로 이동 시: completedAt = null
 
 **검증 에러 메시지**:
 | 조건 | 메시지 |
 |------|--------|
-| 잘못된 status | "상태는 BACKLOG, TODO, IN_PROGRESS 중 선택해주세요" |
+| 잘못된 status (DONE 포함) | "상태는 BACKLOG, TODO, IN_PROGRESS 중 선택해주세요" |
+| ticketId·position 형식 오류, 본문 해석 불가 | "요청 형식이 올바르지 않습니다" |
 | 존재하지 않는 티켓 | "티켓을 찾을 수 없습니다" |
 
 **성공 응답**: 200 OK + 업데이트된 티켓 목록

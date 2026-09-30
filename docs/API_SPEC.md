@@ -22,6 +22,9 @@
 }
 ```
 
+> 이 형식은 아래 7개 엔드포인트가 반환하는 에러에 적용된다. 정의되지 않은 메서드(예: `PUT /api/tickets`)나
+> 존재하지 않는 경로는 프레임워크(Next.js) 기본 응답(405, 404)이 반환되며 이 형식을 따르지 않는다.
+
 ### HTTP 상태 코드
 
 | 코드 | 의미 | 사용 |
@@ -39,7 +42,7 @@
 |------|------|
 | VALIDATION_ERROR | 요청 데이터 검증 실패 |
 | TICKET_NOT_FOUND | 티켓을 찾을 수 없음 |
-| INTERNAL_ERROR | 서버 내부 오류 |
+| INTERNAL_ERROR | 서버 내부 오류 (메시지: "서버 내부 오류가 발생했습니다") |
 
 ### 날짜 필드 구분
 
@@ -67,7 +70,7 @@
 | description | string | X | 최대 1000자 | null | 상세 설명 |
 | priority | string | X | LOW \| MEDIUM \| HIGH | MEDIUM | 우선순위 |
 | plannedStartDate | string | X | YYYY-MM-DD | null | 시작예정일 |
-| dueDate | string | X | YYYY-MM-DD, 오늘 이후 | null | 종료예정일 |
+| dueDate | string | X | YYYY-MM-DD, 내일 이후 (오늘 불가, Asia/Seoul) | null | 종료예정일 |
 
 ```json
 {
@@ -113,7 +116,8 @@
 | 400 | VALIDATION_ERROR | 제목 공백만 입력 | "제목을 입력해주세요" |
 | 400 | VALIDATION_ERROR | 설명 1000자 초과 | "설명은 1000자 이내로 입력해주세요" |
 | 400 | VALIDATION_ERROR | 잘못된 우선순위 값 | "우선순위는 LOW, MEDIUM, HIGH 중 선택해주세요" |
-| 400 | VALIDATION_ERROR | 과거 종료예정일 | "종료예정일은 오늘 이후 날짜를 선택해주세요" |
+| 400 | VALIDATION_ERROR | 과거 또는 오늘 종료예정일 | "종료예정일은 오늘 이후 날짜를 선택해주세요" |
+| 400 | VALIDATION_ERROR | 형식 오류 (본문 해석 불가·자료형 불일치·날짜 형식) | "요청 형식이 올바르지 않습니다" |
 
 ---
 
@@ -216,6 +220,7 @@
 
 | 상태 코드 | 코드 | 조건 | 메시지 |
 |----------|------|------|--------|
+| 400 | VALIDATION_ERROR | id가 양의 정수가 아님 (예: `abc`, `0`) | "요청 형식이 올바르지 않습니다" |
 | 404 | TICKET_NOT_FOUND | 존재하지 않는 ID | "티켓을 찾을 수 없습니다" |
 
 ---
@@ -239,7 +244,7 @@
 | description | string \| null | 최대 1000자. null이면 삭제 | 설명 변경 |
 | priority | string | LOW \| MEDIUM \| HIGH | 우선순위 변경 |
 | plannedStartDate | string \| null | YYYY-MM-DD. null이면 삭제 | 시작예정일 변경 |
-| dueDate | string \| null | YYYY-MM-DD, 오늘 이후. null이면 삭제 | 종료예정일 변경 |
+| dueDate | string \| null | YYYY-MM-DD, 내일 이후 (오늘 불가, Asia/Seoul). null이면 삭제 | 종료예정일 변경 |
 
 ```json
 {
@@ -253,20 +258,24 @@
 
 - 전송된 필드만 업데이트 (PATCH)
 - updatedAt 자동 갱신
-- status, position, startedAt, completedAt은 이 API로 수정 불가
+- status, position, startedAt, completedAt은 이 API로 수정 불가 (보내도 무시)
+- 바꿀 필드가 하나도 없으면(빈 본문) 변경 없이 현재 티켓을 반환 (updatedAt 유지)
 
 ### Response 200 OK
 
-수정된 티켓 전체 데이터 (GET /api/tickets/:id와 동일한 형식)
+수정된 티켓 전체 데이터 (GET /api/tickets/:id와 동일한 형식, `isOverdue` 포함)
 
 ### 에러 응답
 
 | 상태 코드 | 코드 | 조건 | 메시지 |
 |----------|------|------|--------|
+| 400 | VALIDATION_ERROR | 제목 빈 값·공백만 | "제목을 입력해주세요" |
+| 400 | VALIDATION_ERROR | 형식 오류 (본문 해석 불가·자료형 불일치·날짜 형식) | "요청 형식이 올바르지 않습니다" |
 | 400 | VALIDATION_ERROR | 제목 200자 초과 | "제목은 200자 이내로 입력해주세요" |
 | 400 | VALIDATION_ERROR | 설명 1000자 초과 | "설명은 1000자 이내로 입력해주세요" |
 | 400 | VALIDATION_ERROR | 잘못된 우선순위 값 | "우선순위는 LOW, MEDIUM, HIGH 중 선택해주세요" |
-| 400 | VALIDATION_ERROR | 과거 종료예정일 | "종료예정일은 오늘 이후 날짜를 선택해주세요" |
+| 400 | VALIDATION_ERROR | 과거 또는 오늘 종료예정일 | "종료예정일은 오늘 이후 날짜를 선택해주세요" |
+| 400 | VALIDATION_ERROR | id가 양의 정수가 아님 (예: `abc`, `0`) | "요청 형식이 올바르지 않습니다" |
 | 404 | TICKET_NOT_FOUND | 존재하지 않는 ID | "티켓을 찾을 수 없습니다" |
 
 ---
@@ -290,8 +299,9 @@
 
 - status를 `DONE`으로 변경
 - `completedAt`을 현재 시각으로 설정
-- position은 Done 칼럼의 `min(position) - 1024` (맨 위 배치)
+- position은 Done 칼럼의 `min(position) - 1024` (맨 위 배치), Done 칼럼이 비어 있으면 0
 - updatedAt 자동 갱신
+- 이미 DONE인 티켓이면 아무것도 변경하지 않고 현재 티켓을 200으로 반환 (completedAt·position·updatedAt 유지)
 
 ### Response 200 OK
 
@@ -316,6 +326,7 @@
 
 | 상태 코드 | 코드 | 조건 | 메시지 |
 |----------|------|------|--------|
+| 400 | VALIDATION_ERROR | id가 양의 정수가 아님 (예: `abc`, `0`) | "요청 형식이 올바르지 않습니다" |
 | 404 | TICKET_NOT_FOUND | 존재하지 않는 ID | "티켓을 찾을 수 없습니다" |
 
 ---
@@ -343,6 +354,7 @@
 
 | 상태 코드 | 코드 | 조건 | 메시지 |
 |----------|------|------|--------|
+| 400 | VALIDATION_ERROR | id가 양의 정수가 아님 (예: `abc`, `0`) | "요청 형식이 올바르지 않습니다" |
 | 404 | TICKET_NOT_FOUND | 존재하지 않는 ID | "티켓을 찾을 수 없습니다" |
 
 ---
@@ -358,7 +370,7 @@
 |------|------|------|------|
 | ticketId | number | O | 이동할 티켓 ID |
 | status | string | O | 대상 칼럼 (BACKLOG \| TODO \| IN_PROGRESS) |
-| position | number | O | 칼럼 내 새 위치 |
+| position | number | O | 대상 칼럼 내 **인덱스** (0부터, 이동 티켓을 제외한 목록 기준). 칼럼 길이 이상이면 맨 뒤. 실제 position 값은 서버가 계산 |
 
 > **주의**: status에 `DONE`은 허용하지 않는다. Done 이동은 `PATCH /api/tickets/:id/complete`를 사용한다.
 
@@ -377,16 +389,17 @@
 - 전체 작업을 트랜잭션으로 처리 (원자성 보장)
 - updatedAt 자동 갱신
 
-**position 재계산 로직**:
-- 두 카드 사이에 삽입할 때: `(prev + next) / 2`로 계산
-- 간격이 1 미만이면: 해당 칼럼 전체를 1024 간격으로 재정렬
+**position 재계산 로직** (요청의 인덱스 → 실제 position 값):
+- 빈 칼럼에 삽입: 0
+- 두 카드 사이에 삽입할 때: `(prev + next) / 2`를 내림한 정수
+- 두 카드 사이에 넣을 정수가 없으면(간격 1 이하): 해당 칼럼 전체를 0부터 1024 간격으로 재정렬
 - 맨 앞 삽입: 첫 번째 카드의 position - 1024
 - 맨 뒤 삽입: 마지막 카드의 position + 1024
 
 **비즈니스 로직 (startedAt)**:
-- TODO로 이동 시: `startedAt = 현재 시각`
-- TODO에서 BACKLOG로 이동 시: `startedAt = null`
-- 그 외 이동: startedAt 변경 없음
+- 다른 칼럼에서 TODO로 이동 시: `startedAt = 현재 시각`
+- 다른 칼럼에서 BACKLOG로 이동 시: `startedAt = null`
+- 그 외 이동(같은 칼럼 내 순서 변경 포함): startedAt 변경 없음
 
 **비즈니스 로직 (completedAt)**:
 - Done에서 다른 칼럼으로 이동 시: `completedAt = null`
@@ -416,13 +429,14 @@
 }
 ```
 
-**affected**: 순서가 변경된 다른 티켓들의 ID와 새 position
+**affected**: 재정렬로 순서가 변경된 다른 티켓들의 ID와 새 position. 재정렬이 없으면 빈 배열 `[]`
 
 ### 에러 응답
 
 | 상태 코드 | 코드 | 조건 | 메시지 |
 |----------|------|------|--------|
-| 400 | VALIDATION_ERROR | 잘못된 status 값 | "상태는 BACKLOG, TODO, IN_PROGRESS 중 선택해주세요" |
+| 400 | VALIDATION_ERROR | 잘못된 status 값 (DONE 포함, 누락) | "상태는 BACKLOG, TODO, IN_PROGRESS 중 선택해주세요" |
+| 400 | VALIDATION_ERROR | 형식 오류 (본문 해석 불가, ticketId가 양의 정수가 아님, position이 0 이상의 정수가 아님) | "요청 형식이 올바르지 않습니다" |
 | 404 | TICKET_NOT_FOUND | 존재하지 않는 ticketId | "티켓을 찾을 수 없습니다" |
 
 ---

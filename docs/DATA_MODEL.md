@@ -251,9 +251,9 @@ export type BoardData = Record<TicketStatus, TicketWithMeta[]>;
 
 | 이벤트 | 동작 |
 |--------|------|
-| status가 TODO로 변경 | startedAt = 현재 시각 |
-| status가 TODO에서 BACKLOG로 변경 | startedAt = null |
-| TODO가 아닌 상태 간 이동 | startedAt 변경 없음 |
+| status가 다른 칼럼에서 TODO로 변경 | startedAt = 현재 시각 |
+| status가 다른 칼럼에서 BACKLOG로 변경 | startedAt = null |
+| 그 외 이동 (IN_PROGRESS로 이동, 같은 칼럼 내 순서 변경) | startedAt 변경 없음 |
 
 > startedAt은 시스템이 자동 관리하는 필드로, 사용자가 직접 수정할 수 없다.
 
@@ -304,9 +304,10 @@ function isDoneVisible(ticket: Ticket): boolean {
 ### 5.5 Position 관리
 
 - 각 칼럼(status) 내에서 position으로 순서 결정 (오름차순)
-- 새 티켓 생성 시: 해당 칼럼의 `min(position) - 1024` (맨 위 배치)
-- 드래그앤드롭 시: 인접 카드의 position 중간값 계산 `(prev + next) / 2`
-- position 간격이 1 이하로 좁아지면 해당 칼럼 전체 재정렬 (1024 간격)
+- 새 티켓 생성·완료 처리 시: 해당 칼럼의 `min(position) - 1024` (맨 위 배치), 칼럼이 비어 있으면 0
+- 드래그앤드롭 시: 인접 카드의 position 중간값 `(prev + next) / 2`를 내림한 정수. 빈 칼럼이면 0
+- 인접 카드 사이에 넣을 정수가 없으면(간격 1 이하) 해당 칼럼 전체를 0부터 1024 간격으로 재정렬
+- position은 서비스가 항상 직접 지정한다 (DB 기본값 1은 사용되지 않음)
 - 맨 앞 삽입: 첫 번째 카드의 `position - 1024`
 - 맨 뒤 삽입: 마지막 카드의 `position + 1024`
 

@@ -8,6 +8,13 @@ import {
   timestamp,
   varchar,
 } from 'drizzle-orm/pg-core';
+// drizzle-kit은 tsconfig 경로 별칭을 해석하지 않을 수 있어 상대 경로로 import
+import {
+  TICKET_PRIORITY,
+  TICKET_STATUS,
+  type TicketPriority,
+  type TicketStatus,
+} from '../../shared/types';
 
 export const tickets = pgTable(
   'tickets',
@@ -15,8 +22,14 @@ export const tickets = pgTable(
     id: serial('id').primaryKey(),
     title: varchar('title', { length: 200 }).notNull(),
     description: text('description'),
-    status: varchar('status', { length: 20 }).notNull().default('BACKLOG'),
-    priority: varchar('priority', { length: 10 }).notNull().default('MEDIUM'),
+    status: varchar('status', { length: 20 })
+      .$type<TicketStatus>()
+      .notNull()
+      .default(TICKET_STATUS.BACKLOG),
+    priority: varchar('priority', { length: 10 })
+      .$type<TicketPriority>()
+      .notNull()
+      .default(TICKET_PRIORITY.MEDIUM),
     position: integer('position').notNull().default(1),
     plannedStartDate: date('planned_start_date', { mode: 'string' }),
     dueDate: date('due_date', { mode: 'string' }),
