@@ -29,6 +29,15 @@
 | `git push -u origin feat/ticket-api` | 원격에 새 브랜치 푸시 + 추적 설정 |
 | `git show --stat HEAD` / `git status -sb` | 커밋 내용과 CHANGELOG 대조, 원격 동기화 확인 |
 
+## 결과
+- 커밋 `5ef4704` (feat/ticket-api), 103개 파일(+10263, −185), `origin/feat/ticket-api`로 푸시. PR은 만들지 않음
+- 대조: 커밋 103개 = CHANGELOG 102개 + CHANGELOG.md 자신. 파일 목록 누락 없음
+- 라인 수 차이 3건
+  - `CLAUDE.md` +135 → 실제 +136: 수집 후 "최근 변경사항" 한 줄이 추가되어 생긴 예상된 차이
+  - `src/server/db/seed.ts` +21 → 실제 +22, `.specify/` +2804 → 실제 +2805: **스크립트 버그**. 새 파일 라인 수를 `wc -l`로 세어
+    줄바꿈 없이 끝나는 파일이 1줄 적게 나옴 → `awk 'END { print NR }'`로 수정, CHANGELOG의 두 숫자도 정정
+- 위 수정(스크립트, CHANGELOG.md, 이 기록)은 첫 커밋 이후의 변경이라, 사용자 확인 후 같은 브랜치에 후속 커밋으로 푸시
+
 ## 참고
 - 원격 URL에 인증 정보가 포함되어 있다 (출력에서는 가림). 토큰을 URL에 두지 않으려면 credential helper 사용을 검토
 - 이번 CHANGELOG 항목은 첫 커밋 이후의 모든 변경을 한 번에 담아 길다. 이후에는 작업 단위로 `/changelog`를 실행하면 짧아진다

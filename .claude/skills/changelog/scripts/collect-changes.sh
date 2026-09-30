@@ -50,7 +50,8 @@ if [ -n "$(git status --porcelain)" ]; then
   # 아직 git이 추적하지 않는 새 파일 (.gitignore 대상 제외)
   git ls-files --others --exclude-standard | while IFS= read -r path; do
     if [ -f "$path" ] && grep -Iq . "$path" 2>/dev/null; then
-      lines=$(wc -l <"$path" | tr -d ' ')
+      # wc -l은 줄바꿈 문자 수라 마지막 줄에 줄바꿈이 없으면 git보다 1 적다. awk NR은 git numstat과 같다
+      lines=$(awk 'END { print NR }' "$path")
       printf 'A\t%s\t0\t%s\n' "$lines" "$path"
     else
       printf 'A\t-\t-\t%s\n' "$path"
